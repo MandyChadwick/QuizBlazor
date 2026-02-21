@@ -87,8 +87,9 @@
     else if (isGameOver)
     {
         <div class="alert alert-success mt-4">
-            <h2>Time's Up!</h2>
-            <p class="fs-4">You scored <strong>@score</strong> out of <strong>@maxQuestions</strong></p>
+            <h2>Quiz Complete!</h2>
+            <p class="fs-4 mb-1">You scored <strong>@score</strong> out of <strong>@maxQuestions</strong></p>
+            <p class="fs-5 text-muted">Total time: <strong>@totalTimeTaken.ToString(@"mm\:ss\.f")</strong></p>
             <button class="btn btn-primary btn-lg mt-3" @onclick="StartGame">Play Again</button>
         </div>
     }
@@ -143,6 +144,10 @@
     private int timeRemainingPct = 100;
     private CancellationTokenSource cts;
 
+    // NEW: Full game time tracking
+    private DateTime gameStartTime;
+    private TimeSpan totalTimeTaken;
+
     protected override async Task OnInitializedAsync()
     {
         qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
@@ -156,6 +161,7 @@
             score = 0;
             questionCount = 0;
             isGameOver = false;
+            gameStartTime = DateTime.Now; // Start the clock!
             LoadNextQuestion();
         }
     }
@@ -165,6 +171,8 @@
         questionCount++;
         if (questionCount > maxQuestions)
         {
+            // Stop the clock and calculate total time
+            totalTimeTaken = DateTime.Now - gameStartTime;
             isGameOver = true;
             return;
         }
