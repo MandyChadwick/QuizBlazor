@@ -1,19 +1,52 @@
-﻿<nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Matching Game</a>
+﻿<style>
+    /* Forcefully override the default Blazor 'active' grey box */
+    .nav-item ::deep a.active {
+        background-color: transparent !important;
+        color: #ffffff !important;
+        font-weight: bold;
+    }
+
+    /* Clean up the standard link spacing so they all align perfectly */
+    .nav-item ::deep a {
+        color: rgba(255, 255, 255, 0.75);
+        padding: 0.5rem 0.5rem !important;
+        transition: color 0.2s;
+    }
+
+        .nav-item ::deep a:hover {
+            color: #ffffff;
+            background-color: transparent !important;
+        }
+</style>
+
+<nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4 shadow-sm">
+    <div class="container-fluid align-items-center">
+        <a class="navbar-brand mb-0 h1" href="">Learning Games</a>
+
         <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
+
         <div class="@NavMenuCssClass navbar-collapse" @onclick="CollapseNavMenu">
-            <ul class="navbar-nav d-flex flex-row align-items-center gap-3 mb-2 mb-md-0">
+            <ul class="navbar-nav d-flex flex-row align-items-center gap-4 mb-0 mt-2 mt-md-0">
                 <li class="nav-item">
                     <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                        Play Game
+                        Match Game
                     </NavLink>
                 </li>
                 <li class="nav-item">
                     <NavLink class="nav-link" href="trivia">
                         Trivia Quiz
+                    </NavLink>
+                </li>
+                <li class="nav-item">
+                    <NavLink class="nav-link" href="flashcards">
+                        Flashcards
+                    </NavLink>
+                </li>
+                <li class="nav-item">
+                    <NavLink class="nav-link" href="memory">
+                        Memory Game
                     </NavLink>
                 </li>
             </ul>

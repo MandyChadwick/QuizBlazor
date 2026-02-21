@@ -1,0 +1,254 @@
+﻿@page "/memory"
+@inject HttpClient Http
+
+<PageTitle>Memory Game</PageTitle>
+
+<style>
+    .memory-container {
+        max-width: 900px;
+        margin: 1rem auto;
+        text-align: center;
+    }
+
+    /* 4-column grid for the 12 cards */
+    .memory-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    @@media (max-width: 768px) {
+        /* Shrinks to 3 columns on smaller screens */
+        .memory-grid
+
+    {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    }
+
+    /* 3D Scene setup */
+    .scene {
+        width: 100%;
+        min-height: 120px;
+        perspective: 1000px;
+        cursor: pointer;
+    }
+
+    .card-inner {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        transition: transform 0.5s cubic-bezier(0.4, 0.2, 0.2, 1);
+        transform-style: preserve-3d;
+    }
+
+        .card-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+    .card-face {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        font-size: 1.1rem;
+        font-weight: bold;
+        text-align: center;
+        word-wrap: break-word;
+    }
+
+    /* Face down (The back of the physical card) */
+    .card-back {
+        background-color: #0d6efd; /* Blue back */
+        border: 2px solid #0a58ca;
+        color: #ffffff;
+        font-size: 2.5rem;
+    }
+
+        .card-back:hover {
+            background-color: #0b5ed7;
+        }
+
+    /* Face up (The front showing the text) */
+    .card-front {
+        background-color: #ffffff;
+        border: 2px solid #ced4da;
+        color: #212529;
+        transform: rotateY(180deg);
+    }
+
+    /* Matched state */
+    .scene.is-matched .card-front {
+        background-color: #d1e7dd; /* Light green */
+        border-color: #198754;
+        color: #0f5132;
+    }
+
+    .scene.is-matched {
+        cursor: default;
+        opacity: 0.8;
+    }
+</style>
+
+<div class="memory-container">
+    <h2 class="mb-2">Concentration Memory Game</h2>
+
+    @if (qaPairs == null)
+    {
+        <p><em>Loading game board...</em></p>
+    }
+    else if (isGameWon)
+    {
+        <div class="alert alert-success mt-4">
+            <h2>You matched them all! 🎉</h2>
+            <p class="fs-5">Moves taken: <strong>@movesCount</strong></p>
+            <button class="btn btn-primary mt-2" @onclick="StartGame">Play Again</button>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between mb-2 px-2">
+            <span class="text-muted fw-bold">Moves: @movesCount</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="StartGame">Restart Game</button>
+        </div>
+
+        <div class="memory-grid">
+            @foreach (var card in gridCards)
+            {
+                <div class="scene @(card.IsMatched ? "is-matched" : "")"
+                     @onclick="() => SelectCard(card)">
+
+                    <div class="card-inner @(card.IsFlipped || card.IsMatched ? "is-flipped" : "")">
+                        <div class="card-face card-back">
+                            ?
+                        </div>
+
+                        <div class="card-face card-front">
+                            @card.Text
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private List<MemoryCard> gridCards = new();
+
+    private int pairsPerGame = 6;
+    private int movesCount = 0;
+    private bool isProcessing = false;
+
+    private MemoryCard firstSelection;
+    private MemoryCard secondSelection;
+
+    private bool isGameWon => gridCards.Any() && gridCards.All(c => c.IsMatched);
+
+    protected override async Task OnInitializedAsync()
+    {
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        if (qaPairs != null && qaPairs.Any())
+        {
+            movesCount = 0;
+            isProcessing = false;
+            firstSelection = null;
+            secondSelection = null;
+            gridCards.Clear();
+
+            // 1. Pick random pairs for the board
+            var selectedPairs = qaPairs.OrderBy(x => Guid.NewGuid()).Take(pairsPerGame).ToList();
+
+            // 2. Break them into individual cards (one for Question, one for Answer)
+            foreach (var pair in selectedPairs)
+            {
+                gridCards.Add(new MemoryCard { PairId = pair.Id, Text = pair.Question });
+                gridCards.Add(new MemoryCard { PairId = pair.Id, Text = pair.Answer });
+            }
+
+            // 3. Shuffle the 12 resulting cards
+            gridCards = gridCards.OrderBy(x => Guid.NewGuid()).ToList();
+        }
+    }
+
+    private async Task SelectCard(MemoryCard card)
+    {
+        // Don't let them click if we are checking a match, or if the card is already flipped/matched
+        if (isProcessing || card.IsFlipped || card.IsMatched) return;
+
+        card.IsFlipped = true;
+
+        if (firstSelection == null)
+        {
+            // This is the first card they flipped
+            firstSelection = card;
+        }
+        else
+        {
+            // This is the second card they flipped
+            secondSelection = card;
+            movesCount++;
+            isProcessing = true;
+
+            // Force the UI to draw the second card turning over before we check logic
+            StateHasChanged();
+
+            if (firstSelection.PairId == secondSelection.PairId)
+            {
+                // Match!
+                firstSelection.IsMatched = true;
+                secondSelection.IsMatched = true;
+
+                // Keep them flipped up and clear selections
+                ResetSelections();
+            }
+            else
+            {
+                // No Match! Wait 1 second so they can memorize the cards, then flip back
+                await Task.Delay(1000);
+                firstSelection.IsFlipped = false;
+                secondSelection.IsFlipped = false;
+                ResetSelections();
+            }
+        }
+    }
+
+    private void ResetSelections()
+    {
+        firstSelection = null;
+        secondSelection = null;
+        isProcessing = false;
+    }
+
+    // A special model just to track the state of cards on the game board
+    public class MemoryCard
+    {
+        public Guid UniqueId { get; set; } = Guid.NewGuid(); // Needed to tell cards apart
+        public int PairId { get; set; } // Matches the Question to the Answer
+        public string Text { get; set; }
+        public bool IsFlipped { get; set; }
+        public bool IsMatched { get; set; }
+    }
+
+    // Your standard JSON structure
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}

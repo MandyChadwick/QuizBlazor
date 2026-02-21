@@ -1,0 +1,180 @@
+﻿@page "/flashcards"
+@inject HttpClient Http
+
+<PageTitle>Flashcards</PageTitle>
+
+<style>
+    .flashcard-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        text-align: center;
+    }
+
+    /* 3D Scene setup for the flip effect */
+    .scene {
+        width: 100%;
+        height: 300px;
+        perspective: 1000px; /* Gives the 3D depth */
+        margin-bottom: 2rem;
+        cursor: pointer;
+    }
+
+    .card-inner {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+        transform-style: preserve-3d;
+    }
+
+        /* The class applied when the card is clicked */
+        .card-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+    /* Shared styles for both front and back of the card */
+    .card-face {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden; /* Hides the back of the element when facing away */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        font-size: 1.75rem;
+        font-weight: bold;
+    }
+
+    .card-front {
+        background-color: #ffffff;
+        border: 3px solid #0d6efd;
+        color: #212529;
+    }
+
+    .card-back {
+        background-color: #0d6efd;
+        border: 3px solid #0d6efd;
+        color: #ffffff;
+        transform: rotateY(180deg); /* Starts flipped around */
+    }
+
+    .flip-hint {
+        font-size: 0.9rem;
+        font-weight: normal;
+        opacity: 0.7;
+        margin-top: 1rem;
+    }
+</style>
+
+<div class="flashcard-container">
+    <h2 class="mb-4">Interactive Flashcards</h2>
+
+    @if (qaPairs == null)
+    {
+        <p><em>Loading flashcards...</em></p>
+    }
+    else if (qaPairs.Count > 0)
+    {
+        <div class="d-flex justify-content-between mb-2 px-3">
+            <span class="text-muted">Card @(currentIndex + 1) of @qaPairs.Count</span>
+        </div>
+
+        <div class="scene" @onclick="FlipCard">
+            <div class="card-inner @(isFlipped ? "is-flipped" : "")">
+
+                <div class="card-face card-front">
+                    <div>@currentCard.Question</div>
+                    <div class="flip-hint">(Click to flip)</div>
+                </div>
+
+                <div class="card-face card-back">
+                    <div>@currentCard.Answer</div>
+                    <div class="flip-hint">(Click to flip back)</div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-center gap-3">
+            <button class="btn btn-outline-primary px-4 py-2"
+                    @onclick="PrevCard"
+                    disabled="@(currentIndex == 0)">
+                &laquo; Previous
+            </button>
+
+            <button class="btn btn-primary px-4 py-2"
+                    @onclick="NextCard"
+                    disabled="@(currentIndex == qaPairs.Count - 1)">
+                Next &raquo;
+            </button>
+        </div>
+
+        <div class="mt-4">
+            <button class="btn btn-secondary btn-sm" @onclick="ShuffleDeck">Shuffle Deck</button>
+        </div>
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private int currentIndex = 0;
+    private bool isFlipped = false;
+
+    private QAPair currentCard => qaPairs[currentIndex];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load the same JSON file
+        var data = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+
+        if (data != null)
+        {
+            qaPairs = data;
+            ShuffleDeck(); // Start with a shuffled deck
+        }
+    }
+
+    private void FlipCard()
+    {
+        isFlipped = !isFlipped;
+    }
+
+    private void NextCard()
+    {
+        if (currentIndex < qaPairs.Count - 1)
+        {
+            currentIndex++;
+            isFlipped = false; // Always reset to show the question first
+        }
+    }
+
+    private void PrevCard()
+    {
+        if (currentIndex > 0)
+        {
+            currentIndex--;
+            isFlipped = false; // Always reset to show the question first
+        }
+    }
+
+    private void ShuffleDeck()
+    {
+        if (qaPairs != null)
+        {
+            qaPairs = qaPairs.OrderBy(x => Guid.NewGuid()).ToList();
+            currentIndex = 0;
+            isFlipped = false;
+        }
+    }
+
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
