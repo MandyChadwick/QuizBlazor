@@ -1,0 +1,266 @@
+﻿@page "/truefalse"
+@inject HttpClient Http
+@using System.Threading
+
+<PageTitle>True or False</PageTitle>
+
+<style>
+    .tf-container {
+        max-width: 600px;
+        margin: 1rem auto;
+        text-align: center;
+    }
+
+    .card-display {
+        background-color: #f8f9fa;
+        border: 2px solid #ced4da;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    }
+
+    .question-text {
+        font-size: 1.25rem;
+        color: #6c757d;
+        margin-bottom: 1rem;
+    }
+
+    .answer-text {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #212529;
+    }
+
+    /* Big chunky buttons for easy clicking on mobile/desktop */
+    .btn-tf {
+        font-size: 1.5rem;
+        font-weight: bold;
+        padding: 1rem;
+        width: 48%;
+        border-radius: 12px;
+        transition: transform 0.1s;
+    }
+
+        .btn-tf:active {
+            transform: scale(0.95);
+        }
+
+    /* The shrinking timer bar */
+    .timer-container {
+        height: 10px;
+        background-color: #e9ecef;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
+
+    .timer-bar {
+        height: 100%;
+        background-color: #0d6efd;
+        transition: width 0.1s linear, background-color 0.3s;
+    }
+
+        .timer-bar.warning {
+            background-color: #dc3545; /* Turns red when time is low */
+        }
+
+    /* Feedback visual overlays */
+    .feedback-correct {
+        border-color: #198754;
+        background-color: #d1e7dd;
+    }
+
+    .feedback-incorrect {
+        border-color: #dc3545;
+        background-color: #f8d7da;
+    }
+</style>
+
+<div class="tf-container">
+    <h2 class="mb-3">Speed Run: True or False</h2>
+
+    @if (qaPairs == null)
+    {
+        <p><em>Loading game data...</em></p>
+    }
+    else if (isGameOver)
+    {
+        <div class="alert alert-success mt-4">
+            <h2>Time's Up!</h2>
+            <p class="fs-4">You scored <strong>@score</strong> out of <strong>@maxQuestions</strong></p>
+            <button class="btn btn-primary btn-lg mt-3" @onclick="StartGame">Play Again</button>
+        </div>
+    }
+    else if (currentQuestion != null)
+    {
+        <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted fw-bold">Question @questionCount of @maxQuestions</span>
+            <span class="text-muted fw-bold">Score: @score</span>
+        </div>
+
+        <div class="timer-container shadow-sm">
+            <div class="timer-bar @(timeRemainingPct < 30 ? "warning" : "")"
+                 style="width: @(timeRemainingPct)%"></div>
+        </div>
+
+        <div class="card-display @feedbackClass">
+            <div class="question-text">@currentQuestion.Question</div>
+            <div class="answer-text">@displayedAnswer</div>
+        </div>
+
+        <div class="d-flex justify-content-between gap-2">
+            <button class="btn btn-success btn-tf"
+                    @onclick="() => CheckAnswer(true)"
+                    disabled="@isProcessing">
+                TRUE
+            </button>
+
+            <button class="btn btn-danger btn-tf"
+                    @onclick="() => CheckAnswer(false)"
+                    disabled="@isProcessing">
+                FALSE
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private QAPair currentQuestion;
+
+    // Game State
+    private string displayedAnswer;
+    private bool isActuallyTrue;
+    private int score = 0;
+    private int questionCount = 0;
+    private int maxQuestions = 10;
+    private bool isGameOver = false;
+    private bool isProcessing = false;
+    private string feedbackClass = "";
+
+    // Timer Logic
+    private int timeRemainingPct = 100;
+    private CancellationTokenSource cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        if (qaPairs != null && qaPairs.Any())
+        {
+            score = 0;
+            questionCount = 0;
+            isGameOver = false;
+            LoadNextQuestion();
+        }
+    }
+
+    private void LoadNextQuestion()
+    {
+        questionCount++;
+        if (questionCount > maxQuestions)
+        {
+            isGameOver = true;
+            return;
+        }
+
+        isProcessing = false;
+        feedbackClass = "";
+
+        // Pick a random question
+        var random = new Random();
+        currentQuestion = qaPairs[random.Next(qaPairs.Count)];
+
+        // 50/50 chance: Show the real answer OR a random fake answer
+        isActuallyTrue = random.Next(2) == 0;
+
+        if (isActuallyTrue)
+        {
+            displayedAnswer = currentQuestion.Answer;
+        }
+        else
+        {
+            // Grab a random wrong answer from the list
+            var wrongAnswers = qaPairs.Where(q => q.Id != currentQuestion.Id).ToList();
+            displayedAnswer = wrongAnswers[random.Next(wrongAnswers.Count)].Answer;
+        }
+
+        // Start the 5-second countdown timer
+        _ = RunTimerAsync();
+    }
+
+    private async Task RunTimerAsync()
+    {
+        // Cancel any existing timer
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+        var token = cts.Token;
+        timeRemainingPct = 100;
+
+        try
+        {
+            // Loop 50 times, delaying 100ms each time (5 seconds total)
+            for (int i = 100; i >= 0; i -= 2)
+            {
+                timeRemainingPct = i;
+                StateHasChanged();
+                await Task.Delay(100, token);
+            }
+
+            // If the loop finishes and wasn't cancelled by a button click, they ran out of time
+            if (!token.IsCancellationRequested)
+            {
+                await ProcessResult(false, true); // False answer, marked as timeout
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // The user clicked a button and cancelled the timer, which is good!
+        }
+    }
+
+    private async Task CheckAnswer(bool userGuess)
+    {
+        if (isProcessing) return;
+
+        // Stop the timer
+        cts?.Cancel();
+
+        bool isCorrect = (userGuess == isActuallyTrue);
+        await ProcessResult(isCorrect, false);
+    }
+
+    private async Task ProcessResult(bool isCorrect, bool isTimeout)
+    {
+        isProcessing = true;
+
+        if (isCorrect)
+        {
+            score++;
+            feedbackClass = "feedback-correct"; // Flashes green
+        }
+        else
+        {
+            feedbackClass = "feedback-incorrect"; // Flashes red
+        }
+
+        StateHasChanged();
+
+        // Pause for half a second so they can see if they got it right/wrong
+        await Task.Delay(500);
+
+        LoadNextQuestion();
+    }
+
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
