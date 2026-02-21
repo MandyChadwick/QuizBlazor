@@ -52,7 +52,8 @@
 {
     <p><em>Loading game data...</em></p>
 }
-else if (matchedIds.Count == qaPairs.Count)
+/* Updated win condition: check if we matched the number of items currently in play */
+else if (shuffledQuestions.Count > 0 && matchedIds.Count == shuffledQuestions.Count)
 {
     <div class="alert alert-success mt-4">
         <h2>You win! 🎉</h2>
@@ -103,6 +104,9 @@ else
     private QAPair selectedAnswer;
     private HashSet<int> matchedIds = new();
 
+    // The number of items to show per round
+    private int itemsPerRound = 6;
+
     // Runs when the page first loads
     protected override async Task OnInitializedAsync()
     {
@@ -118,15 +122,18 @@ else
 
     private void RestartGame()
     {
-        if (qaPairs != null)
+        if (qaPairs != null && qaPairs.Any())
         {
             matchedIds.Clear();
             selectedQuestion = null;
             selectedAnswer = null;
 
-            // Shuffle questions and answers independently using a random GUID
-            shuffledQuestions = qaPairs.OrderBy(x => Guid.NewGuid()).ToList();
-            shuffledAnswers = qaPairs.OrderBy(x => Guid.NewGuid()).ToList();
+            // 1. Pick a random subset of 6 questions from the master list
+            var currentRoundPairs = qaPairs.OrderBy(x => Guid.NewGuid()).Take(itemsPerRound).ToList();
+
+            // 2. Shuffle those specific 6 questions and answers independently
+            shuffledQuestions = currentRoundPairs.OrderBy(x => Guid.NewGuid()).ToList();
+            shuffledAnswers = currentRoundPairs.OrderBy(x => Guid.NewGuid()).ToList();
         }
     }
 
