@@ -1,0 +1,17 @@
+﻿[
+  {
+    "Id": 1,
+    "Question": "What is the capital of France?",
+    "Answer": "Paris"
+  },
+  {
+    "Id": 2,
+    "Question": "What is 8 * 8?",
+    "Answer": "64"
+  },
+  {
+    "Id": 3,
+    "Question": "What is the chemical symbol for Water?",
+    "Answer": "H2O"
+  }
+]

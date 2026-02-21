@@ -1,0 +1,145 @@
+﻿@page "/"
+@inject HttpClient Http
+
+<PageTitle>Matching Game</PageTitle>
+
+<h1>Q&A Matching Game</h1>
+
+@if (qaPairs == null)
+{
+    <p><em>Loading game data...</em></p>
+}
+else if (matchedIds.Count == qaPairs.Count)
+{
+    <div class="alert alert-success">
+        <h2>You win! 🎉</h2>
+        <button class="btn btn-primary" @onclick="RestartGame">Play Again</button>
+    </div>
+}
+else
+{
+    <div class="game-board">
+        <div class="column">
+            <h3>Questions</h3>
+            @foreach (var q in shuffledQuestions)
+            {
+                <button class="card @GetQuestionClass(q)"
+                        @onclick="() => SelectQuestion(q)"
+                        disabled="@matchedIds.Contains(q.Id)">
+                    @q.Question
+                </button>
+            }
+        </div>
+
+        <div class="column">
+            <h3>Answers</h3>
+            @foreach (var a in shuffledAnswers)
+            {
+                <button class="card @GetAnswerClass(a)"
+                        @onclick="() => SelectAnswer(a)"
+                        disabled="@matchedIds.Contains(a.Id)">
+                    @a.Answer
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<QAPair> qaPairs;
+    private List<QAPair> shuffledQuestions = new();
+    private List<QAPair> shuffledAnswers = new();
+
+    private QAPair selectedQuestion;
+    private QAPair selectedAnswer;
+    private HashSet<int> matchedIds = new();
+
+    // Runs when the page first loads
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        // Reads directly from the wwwroot/data/questions.json file
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        RestartGame();
+    }
+
+    private void RestartGame()
+    {
+        if (qaPairs != null)
+        {
+            matchedIds.Clear();
+            selectedQuestion = null;
+            selectedAnswer = null;
+
+            // Shuffle questions and answers independently using a random GUID
+            shuffledQuestions = qaPairs.OrderBy(x => Guid.NewGuid()).ToList();
+            shuffledAnswers = qaPairs.OrderBy(x => Guid.NewGuid()).ToList();
+        }
+    }
+
+    private void SelectQuestion(QAPair q)
+    {
+        selectedQuestion = q;
+        _ = CheckMatch();
+    }
+
+    private void SelectAnswer(QAPair a)
+    {
+        selectedAnswer = a;
+        _ = CheckMatch();
+    }
+
+    private async Task CheckMatch()
+    {
+        // Only check if both a question and an answer are currently selected
+        if (selectedQuestion != null && selectedAnswer != null)
+        {
+            if (selectedQuestion.Id == selectedAnswer.Id)
+            {
+                // It's a match!
+                matchedIds.Add(selectedQuestion.Id);
+                selectedQuestion = null;
+                selectedAnswer = null;
+            }
+            else
+            {
+                // Not a match. Force the UI to update so the user sees both selections...
+                StateHasChanged();
+
+                // ...wait for a brief moment so they can realize it was wrong...
+                await Task.Delay(800);
+
+                // ...then reset the selections.
+                selectedQuestion = null;
+                selectedAnswer = null;
+            }
+        }
+    }
+
+    // Helpers to apply CSS classes based on the card's state
+    private string GetQuestionClass(QAPair q)
+    {
+        if (matchedIds.Contains(q.Id)) return "matched";
+        if (selectedQuestion == q) return "selected";
+        return "";
+    }
+
+    private string GetAnswerClass(QAPair a)
+    {
+        if (matchedIds.Contains(a.Id)) return "matched";
+        if (selectedAnswer == a) return "selected";
+        return "";
+    }
+
+    // The C# class representing your JSON structure
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
