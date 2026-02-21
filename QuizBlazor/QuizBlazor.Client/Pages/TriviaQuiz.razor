@@ -1,0 +1,213 @@
+﻿@page "/trivia"
+@inject HttpClient Http
+
+<PageTitle>Trivia Quiz</PageTitle>
+
+<style>
+    .quiz-container {
+        max-width: 600px;
+        margin: 1rem auto; /* Reduced from 2rem to bring it up higher */
+    }
+
+    .question-card {
+        background-color: #f8f9fa;
+        border: 2px solid #ced4da;
+        border-radius: 8px;
+        padding: 1rem; /* Reduced from 2rem */
+        margin-bottom: 1rem; /* Reduced from 2rem */
+        text-align: center;
+        font-size: 1.25rem; /* Reduced from 1.5rem */
+        font-weight: bold;
+    }
+
+    .answers-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem; /* Reduced from 1rem to pull answers closer together */
+    }
+
+    .answer-btn {
+        padding: 0.75rem; /* Reduced from 1rem */
+        border: 2px solid #ced4da;
+        border-radius: 8px;
+        background-color: #ffffff;
+        font-size: 1.1rem; /* Reduced slightly */
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+    }
+
+        .answer-btn:hover:not(:disabled) {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+
+        /* Status Colors */
+        .answer-btn.correct {
+            background-color: #d1e7dd;
+            border-color: #198754;
+            color: #0f5132;
+            font-weight: bold;
+        }
+
+        .answer-btn.incorrect {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #842029;
+        }
+</style>
+
+<div class="quiz-container">
+    <h2 class="text-center mb-3">Multiple Choice Quiz</h2>
+
+    @if (qaPairs == null)
+    {
+        <p class="text-center"><em>Loading questions...</em></p>
+    }
+    else if (quizComplete)
+    {
+        <div class="alert alert-success text-center mt-4">
+            <h2>Quiz Complete!</h2>
+            <p class="fs-4">You scored <strong>@score</strong> out of <strong>@questionsPerRound</strong></p>
+            <button class="btn btn-primary btn-lg mt-3" @onclick="StartGame">Play Again</button>
+        </div>
+    }
+    else if (currentQuestion != null)
+    {
+        <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted">Question @(currentQuestionIndex + 1) of @questionsPerRound</span>
+            <span class="text-muted fw-bold">Score: @score</span>
+        </div>
+
+        <div class="question-card shadow-sm">
+            @currentQuestion.Question
+        </div>
+
+        <div class="answers-grid">
+            @foreach (var answer in currentAnswers)
+            {
+                <button class="answer-btn @GetButtonClass(answer)"
+                        @onclick="() => SelectAnswer(answer)"
+                        disabled="@isAnswerChecked">
+                    @answer
+                </button>
+            }
+        </div>
+
+        @if (isAnswerChecked)
+        {
+            <div class="text-center mt-3">
+                <button class="btn btn-primary px-5" @onclick="NextQuestion">
+                    @(currentQuestionIndex + 1 == questionsPerRound ? "Finish Quiz" : "Next Question")
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private List<QAPair> quizQuestions = new();
+
+    private int questionsPerRound = 5;
+    private int currentQuestionIndex = 0;
+    private int score = 0;
+    private bool quizComplete = false;
+
+    private QAPair currentQuestion;
+    private List<string> currentAnswers = new();
+
+    private string selectedAnswer;
+    private bool isAnswerChecked = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        if (qaPairs != null && qaPairs.Any())
+        {
+            score = 0;
+            currentQuestionIndex = 0;
+            quizComplete = false;
+
+            // Pick 5 random questions for this round
+            quizQuestions = qaPairs.OrderBy(x => Guid.NewGuid()).Take(questionsPerRound).ToList();
+
+            LoadQuestion();
+        }
+    }
+
+    private void LoadQuestion()
+    {
+        isAnswerChecked = false;
+        selectedAnswer = null;
+        currentQuestion = quizQuestions[currentQuestionIndex];
+
+        // 1. Get the correct answer
+        var answers = new List<string> { currentQuestion.Answer };
+
+        // 2. Grab 3 random wrong answers from the master list
+        var wrongAnswers = qaPairs
+            .Where(q => q.Id != currentQuestion.Id)
+            .OrderBy(x => Guid.NewGuid())
+            .Take(3)
+            .Select(q => q.Answer);
+
+        answers.AddRange(wrongAnswers);
+
+        // 3. Shuffle the 4 answers so the correct one isn't always first
+        currentAnswers = answers.OrderBy(x => Guid.NewGuid()).ToList();
+    }
+
+    private void SelectAnswer(string answer)
+    {
+        if (isAnswerChecked) return; // Prevent double-clicking
+
+        selectedAnswer = answer;
+        isAnswerChecked = true;
+
+        if (selectedAnswer == currentQuestion.Answer)
+        {
+            score++;
+        }
+    }
+
+    private void NextQuestion()
+    {
+        currentQuestionIndex++;
+
+        if (currentQuestionIndex >= questionsPerRound)
+        {
+            quizComplete = true;
+        }
+        else
+        {
+            LoadQuestion();
+        }
+    }
+
+    // Helper to color the buttons after an answer is clicked
+    private string GetButtonClass(string answer)
+    {
+        if (!isAnswerChecked) return "";
+
+        if (answer == currentQuestion.Answer)
+            return "correct"; // Always highlight the correct answer in green
+
+        if (answer == selectedAnswer && answer != currentQuestion.Answer)
+            return "incorrect"; // Highlight their wrong guess in red
+
+        return "";
+    }
+
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
