@@ -13,5 +13,50 @@
     "Id": 3,
     "Question": "What is the chemical symbol for Water?",
     "Answer": "H2O"
+  },
+  {
+    "Id": 4,
+    "Question": "What is this state?",
+    "Answer": "Alaska"
+  },
+  {
+    "Id": 5,
+    "Question": "What is the capital of Texas?",
+    "Answer": "Huston"
+  },
+  {
+    "Id": 6,
+    "Question": "What is 8 * 7?",
+    "Answer": "56"
+  },
+  {
+    "Id": 7,
+    "Question": "What is the chemical symbol for Hyddrogen?",
+    "Answer": "H"
+  },
+  {
+    "Id": 8,
+    "Question": "What is the best state?",
+    "Answer": "Arizona"
+  },
+  {
+    "Id": 9,
+    "Question": "What is the capital of the world?",
+    "Answer": "Nonne"
+  },
+  {
+    "Id": 10,
+    "Question": "What is 9 * 8?",
+    "Answer": "72"
+  },
+  {
+    "Id": 11,
+    "Question": "What is for dinner",
+    "Answer": "Hot food"
+  },
+  {
+    "Id":12,
+    "Question": "What is this state For?",
+    "Answer": "Snow"
   }
 ]

@@ -1,3 +1,4 @@
+﻿using Microsoft.AspNetCore.Components;
 using QuizBlazor.Client.Pages;
 using QuizBlazor.Components;
 
@@ -12,6 +13,15 @@ public class Program
         // Add services to the container.
         builder.Services.AddRazorComponents()
             .AddInteractiveWebAssemblyComponents();
+
+        // 👇 THIS IS THE MISSING PIECE FOR THE SERVER 👇
+        // It gives the server an HttpClient to use while pre-rendering the page
+        builder.Services.AddScoped(sp =>
+        {
+            var navManager = sp.GetRequiredService<NavigationManager>();
+            return new HttpClient { BaseAddress = new Uri(navManager.BaseUri) };
+        });
+        // 👆 ---------------------------------------- 👆
 
         var app = builder.Build();
 
