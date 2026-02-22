@@ -1,0 +1,281 @@
+﻿@page "/typeracer"
+@inject HttpClient Http
+
+<PageTitle>Type Racer</PageTitle>
+
+<style>
+    .racer-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        text-align: center;
+    }
+
+    .question-box {
+        background-color: #f8f9fa;
+        border: 2px solid #ced4da;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #212529;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    }
+
+    .input-group-lg > .form-control {
+        font-size: 1.5rem;
+        text-align: center;
+        border-radius: 8px 0 0 8px;
+        border: 2px solid #ced4da;
+    }
+
+        .input-group-lg > .form-control:focus {
+            border-color: #0d6efd;
+            box-shadow: none;
+        }
+
+    .input-group-lg > .btn {
+        border-radius: 0 8px 8px 0;
+        font-weight: bold;
+        padding: 0 2rem;
+    }
+
+    /* Feedback Animations */
+    .flash-success {
+        animation: flashGreen 0.5s ease-out;
+    }
+
+    .flash-error {
+        animation: flashRed 0.5s ease-out;
+    }
+
+    @@keyframes flashGreen {
+        0% {
+            background-color: #d1e7dd;
+            border-color: #198754;
+        }
+
+        100% {
+            background-color: #ffffff;
+            border-color: #ced4da;
+        }
+    }
+
+    @@keyframes flashRed {
+        0% {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+        }
+
+        100% {
+            background-color: #ffffff;
+            border-color: #ced4da;
+        }
+    }
+</style>
+
+<div class="racer-container">
+    <h2 class="mb-4">Type Racer: Fill in the Blank</h2>
+
+    @if (qaPairs == null)
+    {
+        <p><em>Loading game data...</em></p>
+    }
+    else if (isGameOver)
+    {
+        <div class="alert alert-success mt-4">
+            <h2>Round Complete!</h2>
+            <p class="fs-4 mb-1">You scored <strong>@score</strong> out of <strong>@maxQuestions</strong></p>
+            <p class="fs-5 text-muted">Total time: <strong>@totalTimeTaken.ToString(@"mm\:ss\.f")</strong></p>
+            <button class="btn btn-primary btn-lg mt-3" @onclick="StartGame">Play Again</button>
+        </div>
+    }
+    else if (currentQuestion != null)
+    {
+        <div class="d-flex justify-content-between mb-2 px-1">
+            <span class="text-muted fw-bold">Question @questionCount of @maxQuestions</span>
+            <span class="text-muted fw-bold">Score: @score</span>
+        </div>
+
+        <div class="question-box">
+            @currentQuestion.Question
+        </div>
+
+        <div class="input-group input-group-lg mb-3">
+            <input type="text"
+                   class="form-control @inputFeedbackClass"
+                   placeholder="Type your answer here..."
+                   @bind="userInput"
+                   @bind:event="oninput"
+                   @onkeyup="HandleKeyUp"
+                   @ref="inputField"
+                   disabled="@isProcessing" />
+
+            <button class="btn btn-primary"
+                    type="button"
+                    @onclick="CheckAnswer"
+                    disabled="@(string.IsNullOrWhiteSpace(userInput) || isProcessing)">
+                Submit
+            </button>
+        </div>
+
+        @if (showError)
+        {
+            <div class="text-danger fw-bold mt-2 mb-3">
+                Incorrect, try again! Or <a href="javascript:void(0)" @onclick="SkipQuestion">Skip</a>
+            </div>
+        }
+
+        @if (skipped)
+        {
+            <div class="alert alert-warning mt-3">
+                The correct answer was: <strong>@currentQuestion.Answer</strong>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private QAPair currentQuestion;
+    private ElementReference inputField;
+
+    // Game State
+    private string userInput = "";
+    private int score = 0;
+    private int questionCount = 0;
+    private int maxQuestions = 10;
+    private bool isGameOver = false;
+    private bool isProcessing = false;
+
+    // Feedback State
+    private string inputFeedbackClass = "";
+    private bool showError = false;
+    private bool skipped = false;
+
+    // NEW: Full game time tracking
+    private DateTime gameStartTime;
+    private TimeSpan totalTimeTaken;
+
+    protected override async Task OnInitializedAsync()
+    {
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        if (qaPairs != null && qaPairs.Any())
+        {
+            score = 0;
+            questionCount = 0;
+            isGameOver = false;
+            gameStartTime = DateTime.Now; // Start the clock!
+            LoadNextQuestion();
+        }
+    }
+
+    private void LoadNextQuestion()
+    {
+        questionCount++;
+        if (questionCount > maxQuestions)
+        {
+            // Stop the clock and calculate total time
+            totalTimeTaken = DateTime.Now - gameStartTime;
+            isGameOver = true;
+            return;
+        }
+
+        // Grab a random question
+        var random = new Random();
+        currentQuestion = qaPairs[random.Next(qaPairs.Count)];
+
+        ResetTurn();
+    }
+
+    private void ResetTurn()
+    {
+        userInput = "";
+        inputFeedbackClass = "";
+        showError = false;
+        skipped = false;
+        isProcessing = false;
+
+        // Force the UI to render the blank input box, then focus it
+        StateHasChanged();
+        _ = FocusInputAsync();
+    }
+
+    private async Task FocusInputAsync()
+    {
+        // Small delay to ensure the HTML element exists before focusing
+        await Task.Delay(50);
+        try
+        {
+            await inputField.FocusAsync();
+        }
+        catch { /* Ignore if focus fails during rapid clicking */ }
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        // If the user presses Enter, automatically click submit for them
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(userInput) && !isProcessing)
+        {
+            await CheckAnswer();
+        }
+    }
+
+    private async Task CheckAnswer()
+    {
+        if (string.IsNullOrWhiteSpace(userInput)) return;
+
+        isProcessing = true;
+        showError = false;
+
+        // Clean up both strings: remove extra spaces and ignore upper/lowercase differences
+        string cleanedInput = userInput.Trim();
+        string cleanedAnswer = currentQuestion.Answer.Trim();
+
+        if (string.Equals(cleanedInput, cleanedAnswer, StringComparison.OrdinalIgnoreCase))
+        {
+            // Correct Answer!
+            score++;
+            inputFeedbackClass = "flash-success";
+            StateHasChanged();
+
+            await Task.Delay(600); // Wait for the green flash animation to finish
+            LoadNextQuestion();
+        }
+        else
+        {
+            // Wrong Answer!
+            inputFeedbackClass = "flash-error";
+            showError = true;
+            isProcessing = false;
+
+            // Re-focus the box so they can immediately fix their typo
+            StateHasChanged();
+            _ = FocusInputAsync();
+        }
+    }
+
+    private async Task SkipQuestion()
+    {
+        isProcessing = true;
+        showError = false;
+        skipped = true;
+        StateHasChanged();
+
+        // Pause for 2 seconds so they can read the correct answer before moving on
+        await Task.Delay(2000);
+        LoadNextQuestion();
+    }
+
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
