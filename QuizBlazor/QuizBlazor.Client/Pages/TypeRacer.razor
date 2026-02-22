@@ -1,5 +1,7 @@
 ﻿@page "/typeracer"
 @inject HttpClient Http
+@using System.Threading
+@implements IDisposable
 
 <PageTitle>Type Racer</PageTitle>
 
@@ -94,6 +96,7 @@
     {
         <div class="d-flex justify-content-between mb-2 px-1">
             <span class="text-muted fw-bold">Question @questionCount of @maxQuestions</span>
+            <span class="text-danger fw-bold">Time: @elapsedTime.ToString(@"mm\:ss\.f")</span>
             <span class="text-muted fw-bold">Score: @score</span>
         </div>
 
@@ -153,9 +156,13 @@
     private bool showError = false;
     private bool skipped = false;
 
-    // NEW: Full game time tracking
+    // Time Tracking
     private DateTime gameStartTime;
     private TimeSpan totalTimeTaken;
+
+    // NEW: Live Timer Variables
+    private TimeSpan elapsedTime;
+    private CancellationTokenSource timerCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,8 +177,33 @@
             score = 0;
             questionCount = 0;
             isGameOver = false;
-            gameStartTime = DateTime.Now; // Start the clock!
+            gameStartTime = DateTime.Now;
+            elapsedTime = TimeSpan.Zero;
+
+            // Start the live timer loop
+            timerCts?.Cancel();
+            timerCts = new CancellationTokenSource();
+            _ = UpdateTimerAsync(timerCts.Token);
+
             LoadNextQuestion();
+        }
+    }
+
+    // NEW: The background loop that updates the clock
+    private async Task UpdateTimerAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested && !isGameOver)
+            {
+                elapsedTime = DateTime.Now - gameStartTime;
+                StateHasChanged();
+                await Task.Delay(100, token); // Update every 1/10th of a second
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignored, just means the timer was stopped
         }
     }
 
@@ -181,12 +213,12 @@
         if (questionCount > maxQuestions)
         {
             // Stop the clock and calculate total time
+            timerCts?.Cancel();
             totalTimeTaken = DateTime.Now - gameStartTime;
             isGameOver = true;
             return;
         }
 
-        // Grab a random question
         var random = new Random();
         currentQuestion = qaPairs[random.Next(qaPairs.Count)];
 
@@ -201,25 +233,22 @@
         skipped = false;
         isProcessing = false;
 
-        // Force the UI to render the blank input box, then focus it
         StateHasChanged();
         _ = FocusInputAsync();
     }
 
     private async Task FocusInputAsync()
     {
-        // Small delay to ensure the HTML element exists before focusing
         await Task.Delay(50);
         try
         {
             await inputField.FocusAsync();
         }
-        catch { /* Ignore if focus fails during rapid clicking */ }
+        catch { }
     }
 
     private async Task HandleKeyUp(KeyboardEventArgs e)
     {
-        // If the user presses Enter, automatically click submit for them
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(userInput) && !isProcessing)
         {
             await CheckAnswer();
@@ -233,28 +262,24 @@
         isProcessing = true;
         showError = false;
 
-        // Clean up both strings: remove extra spaces and ignore upper/lowercase differences
         string cleanedInput = userInput.Trim();
         string cleanedAnswer = currentQuestion.Answer.Trim();
 
         if (string.Equals(cleanedInput, cleanedAnswer, StringComparison.OrdinalIgnoreCase))
         {
-            // Correct Answer!
             score++;
             inputFeedbackClass = "flash-success";
             StateHasChanged();
 
-            await Task.Delay(600); // Wait for the green flash animation to finish
+            await Task.Delay(600);
             LoadNextQuestion();
         }
         else
         {
-            // Wrong Answer!
             inputFeedbackClass = "flash-error";
             showError = true;
             isProcessing = false;
 
-            // Re-focus the box so they can immediately fix their typo
             StateHasChanged();
             _ = FocusInputAsync();
         }
@@ -267,9 +292,15 @@
         skipped = true;
         StateHasChanged();
 
-        // Pause for 2 seconds so they can read the correct answer before moving on
         await Task.Delay(2000);
         LoadNextQuestion();
+    }
+
+    // Cleanup the timer if the player leaves the page
+    public void Dispose()
+    {
+        timerCts?.Cancel();
+        timerCts?.Dispose();
     }
 
     public class QAPair
