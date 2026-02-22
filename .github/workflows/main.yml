@@ -1,0 +1,28 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish Project
+        run: dotnet publish QuizBlazor/QuizBlazor.csproj -c Release -o release
+
+      - name: Change base-tag in index.html from / to QuizBlazor
+        run: sed -i 's/<base href="\/" \/>/<base href="\/QuizBlazor\/" \/>/g' release/wwwroot/index.html
+
+      - name: Upload Toshares
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: release/wwwroot
+          branch: gh-pages
