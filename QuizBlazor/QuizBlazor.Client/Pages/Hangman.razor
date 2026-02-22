@@ -106,7 +106,7 @@
     }
 
         .lives-tracker span {
-            color: #dc3545; /* Red for hearts */
+            color: #212529; /* Changed to dark grey so stickmen aren't bright red */
         }
 </style>
 
@@ -128,7 +128,7 @@
             <span>
                 @for (int i = 0; i < livesRemaining; i++)
                 {
-                    <text>❤ </text>
+                    <text>🧍 </text>
                 }
             </span>
             @if (livesRemaining == 0)
