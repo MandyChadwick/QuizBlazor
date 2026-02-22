@@ -1,5 +1,7 @@
 ﻿@page "/typeracer"
 @inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@using System.Text.Json
 @using System.Threading
 @implements IDisposable
 
@@ -164,10 +166,35 @@
     private TimeSpan elapsedTime;
     private CancellationTokenSource timerCts;
 
-    protected override async Task OnInitializedAsync()
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
-        StartGame();
+        // Only load data when the browser is ready
+        if (firstRender)
+        {
+            // 1. Check local storage
+            var customJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "customQuestions");
+
+            if (!string.IsNullOrWhiteSpace(customJson))
+            {
+                // 2. Parse custom data
+                qaPairs = JsonSerializer.Deserialize<List<QAPair>>(customJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            else
+            {
+                // 3. Fallback to default file
+                qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+            }
+
+            // 4. Start the game logic
+            if (qaPairs != null && qaPairs.Any())
+            {
+                StartGame();
+            }
+
+            // 5. Refresh UI so the first phrase appears
+            StateHasChanged();
+        }
     }
 
     private void StartGame()

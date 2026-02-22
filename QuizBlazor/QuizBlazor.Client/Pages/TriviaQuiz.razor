@@ -1,5 +1,7 @@
 ﻿@page "/trivia"
 @inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@using System.Text.Json
 
 <PageTitle>Trivia Quiz</PageTitle>
 
@@ -120,10 +122,34 @@
     private string selectedAnswer;
     private bool isAnswerChecked = false;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
-        StartGame();
+        // This only runs once, after the browser is fully connected
+        if (firstRender)
+        {
+            // 1. Check local storage first
+            var customJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "customQuestions");
+
+            if (!string.IsNullOrWhiteSpace(customJson))
+            {
+                // 2. Use the pasted JSON if it exists
+                qaPairs = JsonSerializer.Deserialize<List<QAPair>>(customJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            else
+            {
+                // 3. Fallback to the default file
+                qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+            }
+
+            // 4. Start the quiz
+            if (qaPairs != null && qaPairs.Any())
+            {
+                StartGame();
+            }
+
+            // 5. Tell Blazor to refresh the UI with the questions
+            StateHasChanged();
+        }
     }
 
     private void StartGame()

@@ -1,5 +1,7 @@
 ﻿@page "/"
 @inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@using System.Text.Json
 
 <PageTitle>Matching Game</PageTitle>
 
@@ -108,15 +110,30 @@ else
     private int itemsPerRound = 6;
 
     // Runs when the page first loads
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await LoadData();
+        // Only run this the very first time the page loads in the browser
+        if (firstRender)
+        {
+            await LoadData();
+            StateHasChanged(); // Tell Blazor to refresh the UI now that data is loaded
+        }
     }
 
     private async Task LoadData()
     {
-        // Reads directly from the wwwroot/data/questions.json file
-        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        // Now it's safe to call JSRuntime!
+        var customJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "customQuestions");
+
+        if (!string.IsNullOrWhiteSpace(customJson))
+        {
+            qaPairs = JsonSerializer.Deserialize<List<QAPair>>(customJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        else
+        {
+            qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        }
+
         RestartGame();
     }
 

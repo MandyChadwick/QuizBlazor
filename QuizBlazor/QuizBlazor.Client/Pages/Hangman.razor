@@ -1,5 +1,7 @@
 ﻿@page "/hangman"
 @inject HttpClient Http
+@inject IJSRuntime JSRuntime      
+@using System.Text.Json           
 
 <PageTitle>Word Guesser</PageTitle>
 
@@ -207,12 +209,35 @@
 
     private enum GameState { Playing, Won, Lost }
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
-        LoadNextQuestion();
-    }
+        // This check is crucial: only run when the browser is first ready
+        if (firstRender)
+        {
+            // 1. Check local storage first (Safe to call JS now!)
+            var customJson = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "customQuestions");
 
+            if (!string.IsNullOrWhiteSpace(customJson))
+            {
+                // 2. Use the pasted JSON if it exists
+                qaPairs = JsonSerializer.Deserialize<List<QAPair>>(customJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            else
+            {
+                // 3. Fallback to the default file if no custom data exists
+                qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+            }
+
+            // 4. Start the game logic
+            if (qaPairs != null && qaPairs.Any())
+            {
+                LoadNextQuestion();
+            }
+
+            // 5. Force the UI to refresh with the new questions
+            StateHasChanged();
+        }
+    }
     private void LoadNextQuestion()
     {
         if (qaPairs != null && qaPairs.Any())
