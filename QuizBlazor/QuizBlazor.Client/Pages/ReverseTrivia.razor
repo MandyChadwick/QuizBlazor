@@ -1,0 +1,277 @@
+﻿@page "/reversetrivia"
+@inject HttpClient Http
+@using System.Threading
+@implements IDisposable
+
+<PageTitle>Reverse Trivia</PageTitle>
+
+<style>
+    .reverse-container {
+        max-width: 700px;
+        margin: 0.5rem auto; /* Reduced from 1rem to pull everything up */
+    }
+
+    /* The "Clue" box (Displays the Answer) */
+    .clue-card {
+        background-color: #0d6efd;
+        border: 4px solid #0a58ca;
+        border-radius: 12px;
+        padding: 1.5rem 1rem; /* Drastically reduced padding */
+        margin-bottom: 1rem; /* Reduced margin */
+        text-align: center;
+        font-size: 1.75rem; /* Reduced from 2.5rem */
+        font-weight: bold;
+        color: #ffffff;
+        text-transform: uppercase;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .options-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem; /* Reduced from 1rem to pull buttons tighter together */
+    }
+
+    /* The buttons (Display the Questions) */
+    .option-btn {
+        padding: 0.75rem 1rem; /* Drastically reduced padding */
+        border: 2px solid #ced4da;
+        border-radius: 8px;
+        background-color: #ffffff;
+        font-size: 1.1rem; /* Reduced from 1.25rem */
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+        line-height: 1.3;
+    }
+
+        .option-btn:hover:not(:disabled) {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+
+        /* Status Colors */
+        .option-btn.correct {
+            background-color: #d1e7dd;
+            border-color: #198754;
+            color: #0f5132;
+            font-weight: bold;
+        }
+
+        .option-btn.incorrect {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #842029;
+        }
+
+    .prompt-text {
+        text-align: center;
+        font-size: 1rem; /* Reduced slightly */
+        color: #6c757d;
+        margin-bottom: 0.25rem; /* Reduced from 0.5rem */
+        font-style: italic;
+    }
+</style>
+
+<div class="reverse-container">
+    <h2 class="text-center mb-2">Reverse Trivia (Jeopardy Style)</h2>
+
+    @if (qaPairs == null)
+    {
+        <p class="text-center"><em>Loading clues...</em></p>
+    }
+    else if (quizComplete)
+    {
+        <div class="alert alert-success text-center mt-4">
+            <h2>Round Complete!</h2>
+            <p class="fs-4 mb-1">You scored <strong>@score</strong> out of <strong>@questionsPerRound</strong></p>
+            <p class="fs-5 text-muted">Total time: <strong>@totalTimeTaken.ToString(@"mm\:ss\.f")</strong></p>
+            <button class="btn btn-primary btn-lg mt-3" @onclick="StartGame">Play Again</button>
+        </div>
+    }
+    else if (currentPair != null)
+    {
+        <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted fw-bold">Clue @(currentRoundIndex + 1) of @questionsPerRound</span>
+            <span class="text-danger fw-bold">Time: @elapsedTime.ToString(@"mm\:ss\.f")</span>
+            <span class="text-muted fw-bold">Score: @score</span>
+        </div>
+
+        <div class="prompt-text">The answer is...</div>
+
+        <div class="clue-card">
+            @currentPair.Answer
+        </div>
+
+        <div class="prompt-text">What is the correct question?</div>
+
+        <div class="options-grid">
+            @foreach (var option in currentOptions)
+            {
+                <button class="option-btn @GetButtonClass(option)"
+                        @onclick="() => SelectOption(option)"
+                        disabled="@isAnswerChecked">
+                    @option
+                </button>
+            }
+        </div>
+
+        @if (isAnswerChecked)
+        {
+            <div class="text-center mt-3">
+                <button class="btn btn-primary px-5" @onclick="NextTurn">
+                    @(currentRoundIndex + 1 == questionsPerRound ? "Finish Round" : "Next Clue")
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<QAPair> qaPairs;
+    private List<QAPair> quizPairs = new();
+
+    private int questionsPerRound = 5;
+    private int currentRoundIndex = 0;
+    private int score = 0;
+    private bool quizComplete = false;
+
+    private QAPair currentPair;
+    private List<string> currentOptions = new();
+
+    private string selectedOption;
+    private bool isAnswerChecked = false;
+
+    // Time Tracking Variables
+    private DateTime gameStartTime;
+    private TimeSpan totalTimeTaken;
+    private TimeSpan elapsedTime;
+    private CancellationTokenSource timerCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        qaPairs = await Http.GetFromJsonAsync<List<QAPair>>("data/questions.json");
+        StartGame();
+    }
+
+    private void StartGame()
+    {
+        if (qaPairs != null && qaPairs.Any())
+        {
+            score = 0;
+            currentRoundIndex = 0;
+            quizComplete = false;
+
+            // Timer setup
+            gameStartTime = DateTime.Now;
+            elapsedTime = TimeSpan.Zero;
+            timerCts?.Cancel();
+            timerCts = new CancellationTokenSource();
+            _ = UpdateTimerAsync(timerCts.Token);
+
+            // Pick 5 random pairs for this round
+            quizPairs = qaPairs.OrderBy(x => Guid.NewGuid()).Take(questionsPerRound).ToList();
+
+            LoadTurn();
+        }
+    }
+
+    // Background loop that updates the live clock
+    private async Task UpdateTimerAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested && !quizComplete)
+            {
+                elapsedTime = DateTime.Now - gameStartTime;
+                StateHasChanged();
+                await Task.Delay(100, token); // Update every 1/10th of a second
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignored, just means the timer was stopped
+        }
+    }
+
+    private void LoadTurn()
+    {
+        isAnswerChecked = false;
+        selectedOption = null;
+        currentPair = quizPairs[currentRoundIndex];
+
+        // 1. Get the CORRECT Question text
+        var options = new List<string> { currentPair.Question };
+
+        // 2. Grab 3 random WRONG Question texts from the master list
+        var wrongOptions = qaPairs
+            .Where(q => q.Id != currentPair.Id)
+            .OrderBy(x => Guid.NewGuid())
+            .Take(3)
+            .Select(q => q.Question);
+
+        options.AddRange(wrongOptions);
+
+        // 3. Shuffle the 4 options so the correct one isn't always first
+        currentOptions = options.OrderBy(x => Guid.NewGuid()).ToList();
+    }
+
+    private void SelectOption(string option)
+    {
+        if (isAnswerChecked) return;
+
+        selectedOption = option;
+        isAnswerChecked = true;
+
+        if (selectedOption == currentPair.Question)
+        {
+            score++;
+        }
+    }
+
+    private void NextTurn()
+    {
+        currentRoundIndex++;
+
+        if (currentRoundIndex >= questionsPerRound)
+        {
+            // Stop the clock and record final time
+            timerCts?.Cancel();
+            totalTimeTaken = DateTime.Now - gameStartTime;
+            quizComplete = true;
+        }
+        else
+        {
+            LoadTurn();
+        }
+    }
+
+    // Helper to color the buttons after an option is clicked
+    private string GetButtonClass(string option)
+    {
+        if (!isAnswerChecked) return "";
+
+        if (option == currentPair.Question)
+            return "correct"; // Always highlight the correct question in green
+
+        if (option == selectedOption && option != currentPair.Question)
+            return "incorrect"; // Highlight their wrong guess in red
+
+        return "";
+    }
+
+    // Cleanup the timer if the player leaves the page
+    public void Dispose()
+    {
+        timerCts?.Cancel();
+        timerCts?.Dispose();
+    }
+
+    public class QAPair
+    {
+        public int Id { get; set; }
+        public string Question { get; set; }
+        public string Answer { get; set; }
+    }
+}
